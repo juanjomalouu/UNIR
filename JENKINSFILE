@@ -1,5 +1,5 @@
 pipeline {
-    agent any
+    agent { label "Juanjo" }
     
     stages{
         stage('GetCode'){
@@ -30,9 +30,9 @@ pipeline {
                         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                             bat '''
                                 SET FLASK_APP=app\\api.py
-                                START flask run
+                                START flask run 
                                 SET PYTHONPATH=%WORKSPACE%
-                                START java -jar C:\\Users\\Juanjo\\Desktop\\GitHub\\UNIR\\test\\wiremock-standalone-3.10.0.jar --port 9090 --root-dir C:\\Users\\Juanjo\\Desktop\\GitHub\\UNIR 
+                                START java -jar C:\\Users\\Juanjo\\Desktop\\GitHub\\UNIR\\test\\wiremock-standalone-3.10.0.jar --port 9090 --root-dir C:\\Users\\Juanjo\\Desktop\\GitHub\\UNIR\\test\\wiremock 
                                 pytest --junitxml=result-rest.xml test\\rest
                             '''
                         }
