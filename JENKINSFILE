@@ -1,10 +1,12 @@
 pipeline {
-    agent { label "Juanjo" }
+    agent any
     
     stages{
         stage('GetCode'){
             steps {
-                git 'https://github.com/juanjomalouu/UNIR.git'
+                git branch: 'develop', url: 'https://github.com/juanjomalouu/UNIR.git'
+                
+                stash name: 'code', includes: '**'
             }
         }
         stage('Build'){
@@ -16,25 +18,35 @@ pipeline {
         stage('Tests'){
            parallel {
                 stage('Unit'){
+                    agent { label 'node1' }
                     steps {
                         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            unstash 'code'
                             bat '''
+                                whoami
+                                hostname
                                 set PYTHONPATH=%WORKSPACE%
                                 pytest --junitxml=result-unit.xml test\\unit
                             '''
+                            stash name: 'unit results', includes: 'result-unit.xml'
                         }
                     }
                 }
                 stage('Rest') {
+                    agent { label 'node2' }
                     steps {
                         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            unstash 'code'
                             bat '''
+                                whoami
+                                hostname
                                 SET FLASK_APP=app\\api.py
                                 START flask run 
                                 SET PYTHONPATH=%WORKSPACE%
                                 START java -jar C:\\Users\\Juanjo\\Desktop\\GitHub\\UNIR\\test\\wiremock-standalone-3.10.0.jar --port 9090 --root-dir C:\\Users\\Juanjo\\Desktop\\GitHub\\UNIR\\test\\wiremock 
                                 pytest --junitxml=result-rest.xml test\\rest
                             '''
+                            stash name: 'rest results', includes: 'result-rest.xml'
                         }
                     }
                 }
@@ -42,6 +54,8 @@ pipeline {
         }
         stage('Results'){
             steps {
+                unstash 'rest results'
+                unstash 'unit results'
                 junit 'result*.xml'
             }
         }
