@@ -1,0 +1,84 @@
+pipeline {
+    agent any
+    
+    stages{
+        stage('GetCode'){
+            steps {
+                git branch: 'feature_fix_racecond', url:'https://github.com/juanjomalouu/UNIR.git'
+                stash name: 'code', includes: '**'
+            }
+        }
+        stage('Build'){
+            steps {
+                echo 'NO HAY QUE COMPILAR NADA, ESTO ES PYTHON'
+                bat "dir"
+            }
+        }
+        stage('Tests'){
+           parallel {
+                stage('Unit'){
+                    agent { label 'node1' }
+                    steps {
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            unstash 'code'
+                            bat '''
+                                whoami
+                                hostname
+                                set PYTHONPATH=%WORKSPACE%
+                                pytest --junitxml=result-unit.xml test\\unit
+                            '''
+                            stash name: 'unit results', includes: 'result-unit.xml'
+                        }
+                    }
+                }
+                stage('Rest') {
+                    agent { label 'node2' }
+                    steps {
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            unstash 'code'
+                            bat '''
+                                whoami
+                                hostname
+                                SET FLASK_APP=app\\api.py
+                                START flask run 
+                            '''
+                            bat '''
+                                echo "Esperando a que Flask esté disponible..."
+                                for /L %%i in (1,1,10) do (
+                                    curl -s -o NUL -w "%%{http_code}" http://localhost:5000 | findstr "200" && exit /b 0
+                                    timeout /t 2 > NUL
+                                )
+                                echo "Flask no está disponible tras varios intentos"
+                                exit /b 1
+                            '''
+                            bat '''    
+                                SET PYTHONPATH=%WORKSPACE%
+                                START java -jar C:\\Users\\Juanjo\\Desktop\\GitHub\\UNIR\\test\\wiremock-standalone-3.10.0.jar --port 9090 --root-dir C:\\Users\\Juanjo\\Desktop\\GitHub\\UNIR\\test\\wiremock 
+                            '''
+                            bat '''
+                                echo "Esperando a que Wiremock esté disponible en http:localhost:9090/__admin..."
+                                for /L %%i in (1,1,5) do (
+                                    curl -s -o NUL -w "%%{http_code}" http://localhost:9090/calc/sqrt/64 | findstr "200" && exit /b 0
+                                    timeout /t 2 > NUL
+                                )
+                                echo "Wiremock no está disponible tras varios intentos."
+                                exit /b 1
+                            '''
+                            bat '''
+                                pytest --junitxml=result-rest.xml test\\rest
+                            '''
+                            stash name: 'rest results', includes: 'result-rest.xml'
+                        }
+                    }
+                }
+            }
+        }
+        stage('Results'){
+            steps {
+                unstash 'rest results'
+                unstash 'unit results'
+                junit 'result*.xml'
+            }
+        }
+    }
+}
