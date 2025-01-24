@@ -1,61 +1,130 @@
 pipeline {
     agent any
-    
-    stages{
-        stage('GetCode'){
+    stages {
+        stage('Get Code') {
             steps {
+                bat ''' 
+                    whoami
+                    hostname
+                    dir
+                '''
+                //Obtener código del repo
                 git 'https://github.com/juanjomalouu/UNIR.git'
+                echo WORKSPACE
                 stash name: 'code', includes: '**'
-            }
-        }
-        stage('Build'){
-            steps {
-                echo 'NO HAY QUE COMPILAR NADA, ESTO ES PYTHON'
-                bat "dir"
+                
             }
         }
         stage('Tests'){
-           parallel {
+            parallel{
                 stage('Unit'){
-                    agent { label 'node1' }
+                    agent any
                     steps {
                         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                             unstash 'code'
                             bat '''
                                 whoami
                                 hostname
+                                dir
                                 set PYTHONPATH=%WORKSPACE%
                                 pytest --junitxml=result-unit.xml test\\unit
                             '''
+                            junit 'result-unit.xml'
+                            
                             stash name: 'unit results', includes: 'result-unit.xml'
                         }
                     }
                 }
-                stage('Rest') {
-                    agent { label 'node2' }
+        
+                stage('Static') {
+                    agent any
                     steps {
                         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                             unstash 'code'
                             bat '''
                                 whoami
                                 hostname
+                                dir
+                                flake8 --exit-zero --format=pylint app  1>flake8.out 
+                            '''
+                            recordIssues tools: [flake8(name: 'Flake8', pattern: 'flake8.out')], qualityGates: [[threshold: 8, type: 'TOTAL', unstable: true], [threshold: 10, type: 'TOTAL', unstable: false]]
+                            stash name: 'static results', includes: 'flake8.out'
+                        }
+                    }
+                }
+                
+                stage('Security') {
+                    agent any
+                    steps {
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            unstash 'code'
+                            bat '''
+                                whoami
+                                hostname
+                                dir
+                                bandit --exit-zero -r . -f custom -o bandit.out --msg-template "{abspath}:{line}: [{test_id}] {msg}"
+                            '''
+                            recordIssues tools: [pyLint(name: 'Bandit', pattern: 'bandit.out')], qualityGates: [[threshold: 2, type: 'TOTAL', unstable: true], [threshold: 4, type: 'TOTAL', unstable: false]]
+                            stash name: 'security results', includes: 'bandit.out'
+                        }
+                    }
+                }
+                stage('Performance') {
+                    agent any
+                    steps {
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            unstash 'code'
+                            bat '''
+                                whoami
+                                hostname
+                                dir
                                 SET FLASK_APP=app\\api.py
                                 START flask run 
-                                SET PYTHONPATH=%WORKSPACE%
-                                START java -jar C:\\Users\\Juanjo\\Desktop\\GitHub\\UNIR\\test\\wiremock-standalone-3.10.0.jar --port 9090 --root-dir C:\\Users\\Juanjo\\Desktop\\GitHub\\UNIR\\test\\wiremock 
-                                pytest --junitxml=result-rest.xml test\\rest
+                                jmeter -n -t test\\jmeter\\flask.jmx -f -l flask.jtl
                             '''
-                            stash name: 'rest results', includes: 'result-rest.xml'
+                            perfReport sourceDataFiles: 'flask.jtl'
+                            stash name: 'performance results', includes: 'flask.jtl'
+                        }
+                    }
+                }
+                
+                stage('Coverage')
+                {
+                    agent any
+                    steps {
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            unstash 'code'
+                            bat '''
+                                whoami
+                                hostname
+                                dir
+                                SET FLASK_APP=app\\api.py
+                                START flask run 
+                                coverage run --branch --source=app --omit=app\\__init__.py,app\\api.py -m pytest test\\unit
+                                coverage xml
+                            '''
+                            cobertura coberturaReportFile: 'coverage.xml', onlyStable: false, conditionalCoverageTargets: '90,0,80', lineCoverageTargets: '95,0,85'
+                            stash name: 'coverage results', includes: 'coverage.xml'
                         }
                     }
                 }
             }
         }
-        stage('Results'){
-            steps {
-                unstash 'rest results'
-                unstash 'unit results'
-                junit 'result*.xml'
+        stage('Get results')
+        {
+            steps{
+                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                     bat '''
+                        whoami
+                        hostname
+                        dir
+                    '''
+                    unstash 'unit results'
+                    unstash 'static results'
+                    unstash 'security results'
+                    unstash 'performance results'
+                    unstash 'coverage results'
+                }
             }
         }
     }
