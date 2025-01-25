@@ -1,5 +1,5 @@
 pipeline {
-    agent any
+    agent { label 'node1' }
     stages {
         stage('Get Code') {
             steps {
@@ -7,6 +7,7 @@ pipeline {
                     whoami
                     hostname
                     dir
+                    echo ${WORKSPACE}
                 '''
                 //Obtener código del repo
                 git 'https://github.com/juanjomalouu/UNIR.git'
@@ -18,7 +19,7 @@ pipeline {
         stage('Tests'){
             parallel{
                 stage('Unit'){
-                    agent any
+                    agent { label 'node2'}
                     steps {
                         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                             unstash 'code'
@@ -26,6 +27,7 @@ pipeline {
                                 whoami
                                 hostname
                                 dir
+                                echo ${WORKSPACE}
                                 set PYTHONPATH=%WORKSPACE%
                                 pytest --junitxml=result-unit.xml test\\unit
                             '''
@@ -37,7 +39,7 @@ pipeline {
                 }
         
                 stage('Static') {
-                    agent any
+                    agent { label 'node2' }
                     steps {
                         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                             unstash 'code'
@@ -45,6 +47,7 @@ pipeline {
                                 whoami
                                 hostname
                                 dir
+                                echo ${WORKSPACE}
                                 flake8 --exit-zero --format=pylint app  1>flake8.out 
                             '''
                             recordIssues tools: [flake8(name: 'Flake8', pattern: 'flake8.out')], qualityGates: [[threshold: 8, type: 'TOTAL', unstable: true], [threshold: 10, type: 'TOTAL', unstable: false]]
@@ -54,7 +57,7 @@ pipeline {
                 }
                 
                 stage('Security') {
-                    agent any
+                    agent { label 'node2'}
                     steps {
                         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                             unstash 'code'
@@ -62,6 +65,7 @@ pipeline {
                                 whoami
                                 hostname
                                 dir
+                                echo ${WORKSPACE}
                                 bandit --exit-zero -r . -f custom -o bandit.out --msg-template "{abspath}:{line}: [{test_id}] {msg}"
                             '''
                             recordIssues tools: [pyLint(name: 'Bandit', pattern: 'bandit.out')], qualityGates: [[threshold: 2, type: 'TOTAL', unstable: true], [threshold: 4, type: 'TOTAL', unstable: false]]
@@ -70,7 +74,7 @@ pipeline {
                     }
                 }
                 stage('Performance') {
-                    agent any
+                    agent { label 'node3' }
                     steps {
                         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                             unstash 'code'
@@ -78,6 +82,7 @@ pipeline {
                                 whoami
                                 hostname
                                 dir
+                                echo ${WORKSPACE}
                                 SET FLASK_APP=app\\api.py
                                 START flask run 
                                 jmeter -n -t test\\jmeter\\flask.jmx -f -l flask.jtl
@@ -90,7 +95,7 @@ pipeline {
                 
                 stage('Coverage')
                 {
-                    agent any
+                    agent { label 'node3' }
                     steps {
                         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                             unstash 'code'
@@ -98,6 +103,7 @@ pipeline {
                                 whoami
                                 hostname
                                 dir
+                                echo ${WORKSPACE}
                                 SET FLASK_APP=app\\api.py
                                 START flask run 
                                 coverage run --branch --source=app --omit=app\\__init__.py,app\\api.py -m pytest test\\unit
@@ -118,6 +124,7 @@ pipeline {
                         whoami
                         hostname
                         dir
+                        echo ${WORKSPACE}
                     '''
                     unstash 'unit results'
                     unstash 'static results'
