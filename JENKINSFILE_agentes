@@ -74,7 +74,7 @@ pipeline {
                     }
                 }
                 stage('Performance') {
-                    agent { label 'node2' }
+                    agent { label 'node3' }
                     steps {
                         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                             unstash 'code'
