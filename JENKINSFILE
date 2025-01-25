@@ -4,7 +4,7 @@ pipeline {
         stage('Get Code') {
             steps {
                 //Obtener código del repo
-                git 'https://github.com/juanjomalouu/UNIR.git'
+                git branch: 'feature_fix_coverage', url:'https://github.com/juanjomalouu/UNIR.git'
                 bat 'dir'
                 echo WORKSPACE
             }
@@ -65,7 +65,5 @@ pipeline {
                 }
             }
         }
-        
-
     }
 }
