@@ -85,6 +85,13 @@ pipeline {
                                 echo ${WORKSPACE}
                                 SET FLASK_APP=app\\api.py
                                 START flask run 
+                                echo "Esperando a que Flask esté disponible..."
+                                for /L %%i in (1,1,10) do (
+                                    curl -s -o NUL -w "%%{http_code}" http://localhost:5000 | findstr "200" && exit /b 0
+                                    timeout /t 2 > NUL
+                                )
+                                echo "Flask no está disponible tras varios intentos"
+                                exit /b 1
                                 jmeter -n -t test\\jmeter\\flask.jmx -f -l flask.jtl
                             '''
                             perfReport sourceDataFiles: 'flask.jtl'
@@ -104,33 +111,13 @@ pipeline {
                                 hostname
                                 dir
                                 echo ${WORKSPACE}
-                                SET FLASK_APP=app\\api.py
-                                START flask run 
-                                coverage run --branch --source=app --omit=app\\__init__.py,app\\api.py -m pytest test\\unit
+                                coverage run --branch --source=app --omit=app\\__init__.py,app\\api.py
                                 coverage xml
                             '''
                             cobertura coberturaReportFile: 'coverage.xml', onlyStable: false, conditionalCoverageTargets: '90,0,80', lineCoverageTargets: '95,0,85'
                             stash name: 'coverage results', includes: 'coverage.xml'
                         }
                     }
-                }
-            }
-        }
-        stage('Get results')
-        {
-            steps{
-                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                     bat '''
-                        whoami
-                        hostname
-                        dir
-                        echo ${WORKSPACE}
-                    '''
-                    unstash 'unit results'
-                    unstash 'static results'
-                    unstash 'security results'
-                    unstash 'performance results'
-                    unstash 'coverage results'
                 }
             }
         }
